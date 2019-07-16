@@ -1,4 +1,4 @@
-CXX=mpicxx
+CXX=mpicxx/mpicxx/mpicxx/mpicxx
 USEINTEL=no
 USEINTELMPI=no
 USESINGLE=no
