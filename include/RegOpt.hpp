@@ -334,7 +334,7 @@ struct KrylovMethod {
 
 /* parameter for parameter continuation (regularization parameter) */
 struct ParCont {
-    static constexpr ScalarType betavminh1 = 1E-4;    ///< minimal regularization parameter for h1 type norm
+    static constexpr ScalarType betavminh1 = 1E-3;    ///< minimal regularization parameter for h1 type norm
     static constexpr ScalarType betavminh2 = 1E-7;    ///< minimal regularization parameter for h2 type norm
 //    static constexpr ScalarType betavminh1 = 1E-9;      ///< minimal regularization parameter for h1 type norm
 //    static constexpr ScalarType betavminh2 = 1E-9;      ///< minimal regularization parameter for h2 type norm
@@ -598,6 +598,7 @@ class RegOpt {
     unsigned int m_Indent;
     int m_Verbosity;
     std::vector<int> m_LabelIDs;       ///< label ids
+    std::vector<ScalarType> m_ObjWts;  ///< Objective function component weights
     std::string m_PostFix;
 
 

@@ -896,6 +896,18 @@ std::vector<int> String2Vec(const std::string & str, std::string sep) {
     }
 }
 
+/********************************************************************
+ * @brief parse string of NUMxNUMxNUM into a vector
+ *******************************************************************/
+std::vector<ScalarType> String2VecScalarType(const std::string & str, std::string sep) {
+    std::vector<ScalarType> vect;
+    std::stringstream ss(str);
+    std::string num;
+
+    while (std::getline(ss, num, ','))
+        vect.push_back(std::stod(num));
+    return vect;
+}
 
 /********************************************************************
  * @brief return/restore raw pointers for vector for write/read purpose

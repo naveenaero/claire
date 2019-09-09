@@ -95,7 +95,7 @@ PetscErrorCode DistanceMeasureSL2::EvaluateFunctional(ScalarType* D) {
     ScalarType *p_mr = NULL, *p_m = NULL, *p_w = NULL;
     IntType nt, nc, nl, l;
     int rval;
-    ScalarType dr, value, l2distance, hx;
+    ScalarType dr, value, l2distance, hx, objwt;
 
     PetscFunctionBegin;
 
@@ -109,28 +109,37 @@ PetscErrorCode DistanceMeasureSL2::EvaluateFunctional(ScalarType* D) {
     nc = this->m_Opt->m_Domain.nc;
     nl = this->m_Opt->m_Domain.nl;
     hx  = this->m_Opt->GetLebesgueMeasure();   
+    
 
     ierr = GetRawPointer(this->m_StateVariable, &p_m); CHKERRQ(ierr);
     ierr = GetRawPointer(this->m_ReferenceImage, &p_mr); CHKERRQ(ierr);
-
+    
     l = nt*nl*nc;
     value = 0.0;
     if (this->m_Mask != NULL) {
         // mask objective functional
         ierr = GetRawPointer(this->m_Mask, &p_w); CHKERRQ(ierr);
         for (IntType k = 0; k < nc; ++k) {  // for all image components
+            // weight of image to be used in objective function evaluation
+            objwt = this->m_Opt->m_ObjWts[k];
             for (IntType i = 0; i < nl; ++i) {  // for all grid nodes
                 dr = (p_mr[k*nl+i] - p_m[l+k*nl+i]);
-                value += p_w[i]*dr*dr;
+                value += objwt*p_w[i]*dr*dr;
             }
         }
         ierr = RestoreRawPointer(this->m_Mask, &p_w); CHKERRQ(ierr);
     } else {
-        for (IntType i = 0; i < nc*nl; ++i) {
-            dr = (p_mr[i] - p_m[l+i]);
-            value += dr*dr;
+        for (IntType k = 0; k < nc; ++k) { // for all image components
+            // weight of image to be used in objective function evaluation
+            objwt = this->m_Opt->m_ObjWts[k];
+            for (IntType i = 0; i < nl; ++i) { // for all grid nodes
+                dr = (p_mr[k*nl+i] - p_m[l+k*nl+i]);
+                value += objwt*dr*dr;
+            }
         }
     }
+
+
     // all reduce
     rval = MPI_Allreduce(&value, &l2distance, 1, MPIU_REAL, MPI_SUM, PETSC_COMM_WORLD);
     ierr = Assert(rval == MPI_SUCCESS, "mpi error"); CHKERRQ(ierr);
@@ -156,6 +165,7 @@ PetscErrorCode DistanceMeasureSL2::EvaluateFunctional(ScalarType* D) {
 PetscErrorCode DistanceMeasureSL2::SetFinalConditionAE() {
     PetscErrorCode ierr = 0;
     IntType nl, nc, nt, l, ll;
+    ScalarType objwt;
     ScalarType *p_mr = NULL, *p_m = NULL, *p_l = NULL, *p_w = NULL;
     PetscFunctionBegin;
 
@@ -189,8 +199,9 @@ PetscErrorCode DistanceMeasureSL2::SetFinalConditionAE() {
 {
 #pragma omp for
         for (IntType k = 0; k < nc; ++k) {  // for all image components
+            objwt = this->m_Opt->m_ObjWts[k];
             for (IntType i = 0; i < nl; ++i) {  // for all grid nodes
-                p_l[ll+k*nl+i] = p_w[i]*(p_mr[k*nl+i] - p_m[l+k*nl+i]);
+                p_l[ll+k*nl+i] = objwt*p_w[i]*(p_mr[k*nl+i] - p_m[l+k*nl+i]);
             }
         }
 }  // omp
@@ -199,8 +210,11 @@ PetscErrorCode DistanceMeasureSL2::SetFinalConditionAE() {
 #pragma omp parallel
 {
 #pragma omp for
-        for (IntType i = 0; i < nc*nl; ++i) {
-            p_l[ll+i] = p_mr[i] - p_m[l+i];
+        for (IntType k = 0; k < nc; ++k) {  // for all image components
+            objwt = this->m_Opt->m_ObjWts[k];
+            for (IntType i = 0; i < nl; ++i) {  // for all grid nodes
+                p_l[ll+k*nl+i] = objwt*(p_mr[k*nl+i] - p_m[l+k*nl+i]);
+            }
         }
 }  // omp
     }
@@ -223,6 +237,7 @@ PetscErrorCode DistanceMeasureSL2::SetFinalConditionAE() {
 PetscErrorCode DistanceMeasureSL2::SetFinalConditionIAE() {
     PetscErrorCode ierr = 0;
     IntType nt, nc, nl, l;
+    ScalarType objwt;
     ScalarType *p_mtilde = NULL, *p_ltilde = NULL, *p_w = NULL;
 
     this->m_Opt->Enter(__func__);
@@ -250,8 +265,9 @@ PetscErrorCode DistanceMeasureSL2::SetFinalConditionIAE() {
 {
 #pragma omp for
         for (IntType k = 0; k < nc; ++k) {  // for all image components
+            objwt = this->m_Opt->m_ObjWts[k];
             for (IntType i = 0; i < nl; ++i) {  // for all grid nodes
-                p_ltilde[l+k*nl+i] = -p_w[i]*p_mtilde[l+k*nl+i];
+                p_ltilde[l+k*nl+i] = -p_w[i]*objwt*p_mtilde[l+k*nl+i];
             }
         }
 }  // omp
@@ -260,8 +276,11 @@ PetscErrorCode DistanceMeasureSL2::SetFinalConditionIAE() {
 #pragma omp parallel
 {
 #pragma omp for
-        for (IntType i = 0; i < nl*nc; ++i) {
-            p_ltilde[l+i] = -p_mtilde[l+i]; // / static_cast<ScalarType>(nc);
+        for (IntType k = 0; k < nc; ++k) {  // for all image components
+            objwt = this->m_Opt->m_ObjWts[k];
+            for (IntType i = 0; i < nl; ++i) {  // for all grid nodes
+                p_ltilde[l+k*nl+i] = -objwt*p_mtilde[l+k*nl+i];
+            }
         }
 }  // omp
     }
