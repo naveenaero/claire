@@ -21,9 +21,6 @@ endif()
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 
-# use the MPI Compiler
-#set(CMAKE_CXX_COMPILER ${MPI_CXX_COMPILER})
-
 # set optimization level
 set(CMAKE_CXX_FLAGS "-O3 -ansi ${OpenMP_CXX_FLAGS}")
 
@@ -62,47 +59,50 @@ if (USE_PNETCDF)
 endif()
 find_package(ZLIB REQUIRED)
 
-
-
-
 # add sources
 file(GLOB_RECURSE CLAIRE_SOURCES "${PROJECT_SOURCE_DIR}/src/*.cpp")
 list(REMOVE_ITEM CLAIRE_SOURCES "${PROJECT_SOURCE_DIR}/src/DomainDecomposition.cpp")
 list(REMOVE_ITEM CLAIRE_SOURCES "${PROJECT_SOURCE_DIR}/src/Logger.cpp")
 
 # add target
-add_library(claireobj OBJECT ${CLAIRE_SOURCES})
+if (BUILD_SHARED)
+    add_library(registration SHARED ${CLAIRE_SOURCES})
+else()
+    add_library(registration STATIC ${CLAIRE_SOURCES})
+endif()
 
 # set include directories
-target_include_directories(claireobj PUBLIC "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/deps/3rdparty" "${PROJECT_SOURCE_DIR}/deps/3rdparty/libmorton")
-target_include_directories(claireobj PUBLIC ${PETSC_INCLUDES} ${FFTW_INCLUDES} ${ACCFFT_INCLUDES} ${NIFTI_INCLUDES} ${PNETCDF_INCLUDE_DIRS})
+target_include_directories(registration PUBLIC "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/deps/3rdparty" "${PROJECT_SOURCE_DIR}/deps/3rdparty/libmorton")
+target_include_directories(registration PUBLIC ${PETSC_INCLUDES} ${FFTW_INCLUDES} ${ACCFFT_INCLUDES} ${NIFTI_INCLUDES} ${PNETCDF_INCLUDE_DIRS})
 
-target_compile_definitions(claireobj PUBLIC REG_HAS_NIFTI)
+target_compile_definitions(registration PUBLIC REG_HAS_NIFTI)
 if (${USE_PNETCDF})
-    target_compile_definitions(claireobj PUBLIC  REG_HAS_PNETCDF)
+    target_compile_definitions(registration PUBLIC  REG_HAS_PNETCDF)
 endif()
 if (USE_HASWELL AND USE_SINGLE_PRECISION)
-    target_compile_definitions(claireobj PUBLIC HASWELL)
+    target_compile_definitions(registration PUBLIC HASWELL)
 endif()
-set_target_properties(claireobj PROPERTIES CXX_STANDARD 11)
+set_target_properties(registration PROPERTIES CXX_STANDARD 11 ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-set( CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}")
-message("${CMAKE_BINARY_DIR}")
+target_link_libraries(registration ${PETSC_LIBRARIES} ${NIFTI_LIBRARIES} ${ZLIB_LIBRARIES} ${ACCFFT_LIBRARIES} ${PNETCDF_LIBRARIES} ${FFTW_LIBRARIES})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+install(TARGETS registration DESTINATION lib)
 
 # add app executables and install
 file( GLOB APP_SOURCES "${PROJECT_SOURCE_DIR}/apps/*.cpp" )
 foreach( appsourcefile ${APP_SOURCES} )
     get_filename_component( app ${appsourcefile} NAME_WE "${PROJECT_SOURCE_DIR}/apps")
-    add_executable( ${app} $<TARGET_OBJECTS:claireobj> ${appsourcefile} )
-    target_link_libraries (${app} ${PETSC_LIBRARIES} ${NIFTI_LIBRARIES} ${ZLIB_LIBRARIES} ${ACCFFT_LIBRARIES} ${PNETCDF_LIBRARIES} ${FFTW_LIBRARIES})
+    add_executable( ${app} ${appsourcefile} )
+    add_dependencies( ${app} registration )
+    target_link_libraries (${app} ${PETSC_LIBRARIES} ${NIFTI_LIBRARIES} ${ZLIB_LIBRARIES} ${ACCFFT_LIBRARIES} ${PNETCDF_LIBRARIES} ${FFTW_LIBRARIES} registration)
     if (${USE_INTEL})
         target_link_libraries (${app} "imf")
         target_link_libraries (${app} "m")
     endif()
     set_target_properties(${app} PROPERTIES CXX_STANDARD 11)
-    copy_target_property(claireobj ${app} INCLUDE_DIRECTORIES)
-    copy_target_property(claireobj ${app} COMPILE_OPTIONS)
-    copy_target_property(claireobj ${app} COMPILE_DEFINITIONS)
+    copy_target_property(registration ${app} INCLUDE_DIRECTORIES)
+    copy_target_property(registration ${app} COMPILE_OPTIONS)
+    copy_target_property(registration ${app} COMPILE_DEFINITIONS)
     install( TARGETS ${app} 
              DESTINATION bin )
 endforeach( appsourcefile ${APP_SOURCES} )
